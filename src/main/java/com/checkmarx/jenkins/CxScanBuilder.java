@@ -1531,6 +1531,29 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
             } else {
                 run.setResult(Result.FAILURE);
             }
+
+
+        }
+        //Add new logs due to ticket number 74463
+        if (useUnstableOnError(getDescriptor())){
+            log.info("useUnstableOnError(getDescriptor()) is TRUE");
+            log.info("Value of run.getResult() >> " + run.getResult().toString());
+        }else {
+            log.info("useUnstableOnError(getDescriptor()) is FALSE");
+            log.info("Value of run.getResult() >> " + run.getResult().toString());
+        }
+        log.info("scanSummary.hasErrors() >> " + scanSummary.hasErrors());
+        if (ret.getGeneralException() != null){
+            log.info("ret.getGeneralException() >> " + ret.getGeneralException());
+        }
+        if ((ret.getSastResults() != null && ret.getSastResults().getException() != null) ){
+            log.info(" ret.getSastResults().getException() >> " + ret.getSastResults().getException());
+        }
+        if ( (ret.getOsaResults() != null && ret.getOsaResults().getException() != null)){
+            log.info(" ret.getOsaResults().getException() >> " +  ret.getOsaResults().getException());
+        }
+        if ( (ret.getScaResults() != null && ret.getScaResults().getException() != null)){
+            log.info("ret.getScaResults().getException() >> " + ret.getScaResults().getException());
         }
     }
 
