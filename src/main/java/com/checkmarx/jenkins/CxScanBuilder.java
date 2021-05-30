@@ -274,7 +274,7 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
             this.vulnerabilityThresholdResult = Result.fromString(vulnerabilityThresholdResult);
         }
         this.avoidDuplicateProjectScans = avoidDuplicateProjectScans;
-        this.addGlobalCommenToBuildCommet=addGlobalCommenToBuildCommet;
+        this.addGlobalCommenToBuildCommet = addGlobalCommenToBuildCommet;
         this.generateXmlReport = (generateXmlReport == null) ? true : generateXmlReport;
     }
 
@@ -541,6 +541,7 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
     public boolean isAvoidDuplicateProjectScans() {
         return avoidDuplicateProjectScans;
     }
+
     public boolean isAddGlobalCommenToBuildCommet() {
         return addGlobalCommenToBuildCommet;
     }
@@ -700,10 +701,12 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
     public void setAvoidDuplicateProjectScans(boolean avoidDuplicateProjectScans) {
         this.avoidDuplicateProjectScans = avoidDuplicateProjectScans;
     }
+
     @DataBoundSetter
     public void setaddGlobalCommenToBuildCommet(boolean addGlobalCommenToBuildCommet) {
         this.addGlobalCommenToBuildCommet = addGlobalCommenToBuildCommet;
     }
+
     @DataBoundSetter
     public void setGenerateXmlReport(Boolean generateXmlReport) {
         this.generateXmlReport = generateXmlReport;
@@ -914,12 +917,12 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
 
         if (configProvider.hasConfiguration(CX_ORIGIN, "project"))
             configAsCodeFromFile.setProject(
-                    configProvider.getStringConfiguration(CX_ORIGIN,"project")
-                    );
+                    configProvider.getStringConfiguration(CX_ORIGIN, "project")
+            );
 
         if (configProvider.hasConfiguration(CX_ORIGIN, "team"))
             configAsCodeFromFile.setTeam(
-                    configProvider.getStringConfiguration(CX_ORIGIN,"team"));
+                    configProvider.getStringConfiguration(CX_ORIGIN, "team"));
 
         if (configProvider.hasConfiguration(CX_ORIGIN, "sast"))
             configAsCodeFromFile.setSast(
@@ -1156,17 +1159,17 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
             String jenURL = env.get("JENKINS_URL");
             jenURL = jenURL.substring((jenURL.lastIndexOf("://")) + 3);
             String hostName = "";
-            if(jenURL.indexOf(":")!=-1) {
+            if (jenURL.indexOf(":") != -1) {
                 hostName = jenURL.substring(0, jenURL.lastIndexOf(":"));
             } else {
                 hostName = jenURL;
             }
             passedURL = "Jenkins " + hostName + " " + jobName;
             // 50 is the maximum number of characters allowed by SAST server
-            if(passedURL.length()>50)
-                passedURL=passedURL.substring(0,50);
+            if (passedURL.length() > 50)
+                passedURL = passedURL.substring(0, 50);
             else
-                passedURL=passedURL;
+                passedURL = passedURL;
         } catch (UnsupportedEncodingException e) {
             log.error("Failed to get Jenkins URL of the JOB: " + e.getMessage());
         }
@@ -1177,7 +1180,7 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
     private String getCxOriginUrl(EnvVars env, CxLoggerAdapter log) {
         String jenURL = env.get("JENKINS_URL");
         String jobName = env.get("JOB_NAME");
-        String originUrl = jenURL+"job/"+jobName;
+        String originUrl = jenURL + "job/" + jobName;
         return originUrl;
     }
 
@@ -1190,8 +1193,8 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
 
         //general
         ret.setCxOrigin(jenkinURL);
-        log.debug("  ORIGIN FROM JENKIN :: "+ jenkinURL);
-        log.debug("  ORIGIN URL FROM JENKIN :: "+ originUrl);
+        log.debug("  ORIGIN FROM JENKIN :: " + jenkinURL);
+        log.debug("  ORIGIN URL FROM JENKIN :: " + originUrl);
 
         ret.setDisableCertificateValidation(!descriptor.isEnableCertificateValidation());
         ret.setMvnPath(descriptor.getMvnPath());
@@ -1249,9 +1252,8 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
             boolean useGlobalThreshold = shouldUseGlobalThreshold();
             boolean useJobThreshold = shouldUseJobThreshold();
             ret.setSastThresholdsEnabled(useGlobalThreshold || useJobThreshold);
-            if(addGlobalCommenToBuildCommet)
-            {
-                ret.setScanComment(comment+" "+env.expand(descriptor.sastcomment));
+            if (addGlobalCommenToBuildCommet) {
+                ret.setScanComment(comment + " " + env.expand(descriptor.sastcomment));
             }
 
             if (useGlobalThreshold) {
@@ -1517,43 +1519,61 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
     private void failTheBuild(Run<?, ?> run, CxScanConfig config, ScanResults ret) {
         //assert if expected exception is thrown  OR when vulnerabilities under threshold OR when policy violated
         ScanSummary scanSummary = new ScanSummary(config, ret.getSastResults(), ret.getOsaResults(), ret.getScaResults());
-        if (scanSummary.hasErrors() || ret.getGeneralException() != null ||
-                (ret.getSastResults() != null && ret.getSastResults().getException() != null) ||
-                (ret.getOsaResults() != null && ret.getOsaResults().getException() != null) ||
-                (ret.getScaResults() != null && ret.getScaResults().getException() != null)) {
-            printBuildFailure(scanSummary.toString(), ret, log);
-            if (resolvedVulnerabilityThresholdResult != null) {
-                run.setResult(resolvedVulnerabilityThresholdResult);
-            }
+      try {
+          if (scanSummary.hasErrors() || ret.getGeneralException() != null ||
+                  (ret.getSastResults() != null && ret.getSastResults().getException() != null) ||
+                  (ret.getOsaResults() != null && ret.getOsaResults().getException() != null) ||
+                  (ret.getScaResults() != null && ret.getScaResults().getException() != null)) {
+              log.info("First time");
+              debugTicket74463(scanSummary, ret);
+              printBuildFailure(scanSummary.toString(), ret, log);
+              if (resolvedVulnerabilityThresholdResult != null) {
+                  run.setResult(resolvedVulnerabilityThresholdResult);
+              }
 
-            if (useUnstableOnError(getDescriptor())) {
-                run.setResult(Result.UNSTABLE);
-            } else {
-                run.setResult(Result.FAILURE);
-            }
+              if (useUnstableOnError(getDescriptor())) {
+                  run.setResult(Result.UNSTABLE);
+                  log.info("Result.UNSTABLE");
+              } else {
+                  run.setResult(Result.FAILURE);
+                  log.info("Result.FAILURE");
+              }
 
 
+          }
+      }catch (Exception e){
+          log.info("try catch");
+          debugTicket74463(scanSummary, ret);
+          printBuildFailure(scanSummary.toString(), ret, log);
+          if (resolvedVulnerabilityThresholdResult != null) {
+              run.setResult(resolvedVulnerabilityThresholdResult);
+          }
+
+          if (useUnstableOnError(getDescriptor())) {
+              run.setResult(Result.UNSTABLE);
+              log.info("Result.UNSTABLE");
+          } else {
+              run.setResult(Result.FAILURE);
+              log.info("Result.FAILURE");
+          }
+      }
+    }
+
+    private void debugTicket74463(ScanSummary scanSummary,ScanResults ret) {
+        if (scanSummary.hasErrors()) {
+            log.info("scanSummary.hasErrors() is TRUE");
         }
-        //Add new logs due to ticket number 74463
-        if (useUnstableOnError(getDescriptor())){
-            log.info("useUnstableOnError(getDescriptor()) is TRUE");
-            log.info("Value of run.getResult() >> " + run.getResult().toString());
-        }else {
-            log.info("useUnstableOnError(getDescriptor()) is FALSE");
-            log.info("Value of run.getResult() >> " + run.getResult().toString());
+        if (ret.getGeneralException() != null) {
+            log.info("ret.getGeneralException() != null");
         }
-        log.info("scanSummary.hasErrors() >> " + scanSummary.hasErrors());
-        if (ret.getGeneralException() != null){
-            log.info("ret.getGeneralException() >> " + ret.getGeneralException());
+        if((ret.getSastResults() != null && ret.getSastResults().getException() != null)){
+            log.info("(ret.getSastResults() != null && ret.getSastResults().getException() != null)");
         }
-        if ((ret.getSastResults() != null && ret.getSastResults().getException() != null) ){
-            log.info(" ret.getSastResults().getException() >> " + ret.getSastResults().getException());
-        }
-        if ( (ret.getOsaResults() != null && ret.getOsaResults().getException() != null)){
-            log.info(" ret.getOsaResults().getException() >> " +  ret.getOsaResults().getException());
+        if((ret.getOsaResults() != null && ret.getOsaResults().getException() != null)){
+            log.info("(ret.getOsaResults() != null && ret.getOsaResults().getException() != null)");
         }
         if ( (ret.getScaResults() != null && ret.getScaResults().getException() != null)){
-            log.info("ret.getScaResults().getException() >> " + ret.getScaResults().getException());
+            log.info(" (ret.getScaResults() != null && ret.getScaResults().getException() != null)");
         }
     }
 
