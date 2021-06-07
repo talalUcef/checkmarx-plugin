@@ -774,122 +774,125 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
 
     @Override
     public void perform(@Nonnull Run<?, ?> run, @Nonnull FilePath workspace, @Nonnull Launcher launcher, @Nonnull TaskListener listener) throws InterruptedException, IOException {
+        try {
+            log = new CxLoggerAdapter(listener.getLogger());
 
-        log = new CxLoggerAdapter(listener.getLogger());
-
-        if ((sastEnabled == null || sastEnabled) && isSkipScan(run)) {
-            log.info("Checkmarx scan skipped since the build was triggered by SCM. " +
-                    "Visit plugin configuration page to disable this skip.");
-            return;
-        }
-
-        //resolve configuration
-        final DescriptorImpl descriptor = getDescriptor();
-        EnvVars env = run.getEnvironment(listener);
-        setFsaConfiguration(env);
-        CxScanConfig config = resolveConfiguration(run, descriptor, env, log);
-
-        if (configAsCode) {
-            try {
-                overrideConfigAsCode(config, workspace);
-            } catch (ConfigurationException e) {
-                log.warn("couldn't load config file", e.getMessage());
+            if ((sastEnabled == null || sastEnabled) && isSkipScan(run)) {
+                log.info("Checkmarx scan skipped since the build was triggered by SCM. " +
+                        "Visit plugin configuration page to disable this skip.");
+                return;
             }
-        }
 
+            //resolve configuration
+            final DescriptorImpl descriptor = getDescriptor();
+            EnvVars env = run.getEnvironment(listener);
+            setFsaConfiguration(env);
+            CxScanConfig config = resolveConfiguration(run, descriptor, env, log);
 
-        //print configuration
-        printConfiguration(config, log);
-
-        //validate at least one scan type is enabled
-        if (!config.isSastEnabled() && !config.isAstScaEnabled() && !config.isOsaEnabled()) {
-            log.error("Both SAST and dependency scan are disabled. Exiting.");
-            run.setResult(Result.FAILURE);
-            return;
-        }
-
-        Jenkins instance = Jenkins.getInstance();
-        final CxScanCallable action;
-        if (instance != null && instance.proxy != null &&
-                (useOwnServerCredentials ? this.isProxy : getDescriptor().getIsProxy()) &&
-                !(isCxURLinNoProxyHost(useOwnServerCredentials ? this.serverUrl : getDescriptor().getServerUrl(), instance.proxy.getNoProxyHostPatterns()))) {
-            action = new CxScanCallable(config, listener, instance.proxy);
-        } else {
-            action = new CxScanCallable(config, listener);
-        }
-
-        //create scans and retrieve results (in jenkins agent)
-        RemoteScanInfo scanInfo = workspace.act(action);
-        ScanResults scanResults = scanInfo.getScanResults();
-
-        // We'll need this for the HTML report.
-        config.setCxARMUrl(scanInfo.getCxARMUrl());
-
-        CxScanResult cxScanResult = new CxScanResult(run, config);
-
-        //write reports to build dir
-        File checkmarxBuildDir = new File(run.getRootDir(), "checkmarx");
-        checkmarxBuildDir.mkdir();
-
-        if (config.getGeneratePDFReport()) {
-            String path = "";
-            // run.getUrl() returns a URL path similar to job/MyJobName/124/
-            //getRootUrl() will return the value of "Manage Jenkins->configuration->Jenkins URL"
-            String baseUrl = Jenkins.getInstance().getRootUrl();
-            if (StringUtils.isNotEmpty(baseUrl)) {
-                URL parsedUrl = new URL(baseUrl);
-                path = parsedUrl.getPath();
-            }
-            if (!(path.equals("/"))) {
-                //to handle this Jenkins root url,EX: http://localhost:8081/jenkins
-                Path pdfUrlPath = Paths.get(path, run.getUrl(), PDF_URL);
-                scanResults.getSastResults().setSastPDFLink(pdfUrlPath.toString());
-            } else {
-                //to handle this Jenkins root url,EX: http://localhost:8081/
-                String pdfUrl = String.format(PDF_URL_TEMPLATE, run.getUrl());
-                scanResults.getSastResults().setSastPDFLink(pdfUrl);
-            }
-        }
-
-        //in case of async mode, do not create reports (only the report of the latest scan)
-        //and don't assert threshold vulnerabilities
-
-        failTheBuild(run, config, scanResults);
-        if (config.getSynchronous()) {
-
-            //generate html report
-            String reportName = generateHTMLReport(workspace, checkmarxBuildDir, config, scanResults);
-            cxScanResult.setHtmlReportName(reportName);
-            run.addAction(cxScanResult);
-
-
-            //create sast reports
-            SASTResults sastResults = scanResults.getSastResults();
-            if (sastResults != null && sastResults.isSastResultsReady()) {
-                if (config.getGenerateXmlReport() == null || config.getGenerateXmlReport()) {
-                    createSastReports(sastResults, checkmarxBuildDir, workspace);
+            if (configAsCode) {
+                try {
+                    overrideConfigAsCode(config, workspace);
+                } catch (ConfigurationException e) {
+                    log.warn("couldn't load config file", e.getMessage());
                 }
-                addEnvVarAction(run, sastResults);
-                cxScanResult.setSastResults(sastResults);
             }
 
-            //create osa reports
-            OSAResults osaResults = scanResults.getOsaResults();
-            AstScaResults scaResults = scanResults.getScaResults();
-            if (osaResults != null && osaResults.isOsaResultsReady()) {
-                createOsaReports(osaResults, checkmarxBuildDir);
-            } else if (scaResults != null && scaResults.isScaResultReady()) {
-                createScaReports(scaResults, checkmarxBuildDir);
-            }
-            return;
-        }
 
-        //Asynchronous scan - add note message and previous build reports
-        if (!descriptor.isAsyncHtmlRemoval() || config.getSynchronous()) {
-            String reportName = generateHTMLReport(workspace, checkmarxBuildDir, config, scanResults);
-            cxScanResult.setHtmlReportName(reportName);
+            //print configuration
+            printConfiguration(config, log);
+
+            //validate at least one scan type is enabled
+            if (!config.isSastEnabled() && !config.isAstScaEnabled() && !config.isOsaEnabled()) {
+                log.error("Both SAST and dependency scan are disabled. Exiting.");
+                run.setResult(Result.FAILURE);
+                return;
+            }
+
+            Jenkins instance = Jenkins.getInstance();
+            final CxScanCallable action;
+            if (instance != null && instance.proxy != null &&
+                    (useOwnServerCredentials ? this.isProxy : getDescriptor().getIsProxy()) &&
+                    !(isCxURLinNoProxyHost(useOwnServerCredentials ? this.serverUrl : getDescriptor().getServerUrl(), instance.proxy.getNoProxyHostPatterns()))) {
+                action = new CxScanCallable(config, listener, instance.proxy);
+            } else {
+                action = new CxScanCallable(config, listener);
+            }
+
+            //create scans and retrieve results (in jenkins agent)
+            RemoteScanInfo scanInfo = workspace.act(action);
+            ScanResults scanResults = scanInfo.getScanResults();
+
+            // We'll need this for the HTML report.
+            config.setCxARMUrl(scanInfo.getCxARMUrl());
+
+            CxScanResult cxScanResult = new CxScanResult(run, config);
+
+            //write reports to build dir
+            File checkmarxBuildDir = new File(run.getRootDir(), "checkmarx");
+            checkmarxBuildDir.mkdir();
+
+            if (config.getGeneratePDFReport()) {
+                String path = "";
+                // run.getUrl() returns a URL path similar to job/MyJobName/124/
+                //getRootUrl() will return the value of "Manage Jenkins->configuration->Jenkins URL"
+                String baseUrl = Jenkins.getInstance().getRootUrl();
+                if (StringUtils.isNotEmpty(baseUrl)) {
+                    URL parsedUrl = new URL(baseUrl);
+                    path = parsedUrl.getPath();
+                }
+                if (!(path.equals("/"))) {
+                    //to handle this Jenkins root url,EX: http://localhost:8081/jenkins
+                    Path pdfUrlPath = Paths.get(path, run.getUrl(), PDF_URL);
+                    scanResults.getSastResults().setSastPDFLink(pdfUrlPath.toString());
+                } else {
+                    //to handle this Jenkins root url,EX: http://localhost:8081/
+                    String pdfUrl = String.format(PDF_URL_TEMPLATE, run.getUrl());
+                    scanResults.getSastResults().setSastPDFLink(pdfUrl);
+                }
+            }
+
+            //in case of async mode, do not create reports (only the report of the latest scan)
+            //and don't assert threshold vulnerabilities
+
+            failTheBuild(run, config, scanResults);
+            if (config.getSynchronous()) {
+
+                //generate html report
+                String reportName = generateHTMLReport(workspace, checkmarxBuildDir, config, scanResults);
+                cxScanResult.setHtmlReportName(reportName);
+                run.addAction(cxScanResult);
+
+
+                //create sast reports
+                SASTResults sastResults = scanResults.getSastResults();
+                if (sastResults != null && sastResults.isSastResultsReady()) {
+                    if (config.getGenerateXmlReport() == null || config.getGenerateXmlReport()) {
+                        createSastReports(sastResults, checkmarxBuildDir, workspace);
+                    }
+                    addEnvVarAction(run, sastResults);
+                    cxScanResult.setSastResults(sastResults);
+                }
+
+                //create osa reports
+                OSAResults osaResults = scanResults.getOsaResults();
+                AstScaResults scaResults = scanResults.getScaResults();
+                if (osaResults != null && osaResults.isOsaResultsReady()) {
+                    createOsaReports(osaResults, checkmarxBuildDir);
+                } else if (scaResults != null && scaResults.isScaResultReady()) {
+                    createScaReports(scaResults, checkmarxBuildDir);
+                }
+                return;
+            }
+
+            //Asynchronous scan - add note message and previous build reports
+            if (!descriptor.isAsyncHtmlRemoval() || config.getSynchronous()) {
+                String reportName = generateHTMLReport(workspace, checkmarxBuildDir, config, scanResults);
+                cxScanResult.setHtmlReportName(reportName);
+            }
+            run.addAction(cxScanResult);
+        } catch (Exception e) {
+            log.info("[CHECKMARX] Unexpected exception: " + e.getMessage(), e);
         }
-        run.addAction(cxScanResult);
     }
 
     private void overrideConfigAsCode(CxScanConfig config, FilePath workspace) throws ConfigurationException {
@@ -1519,60 +1522,60 @@ public class CxScanBuilder extends Builder implements SimpleBuildStep {
     private void failTheBuild(Run<?, ?> run, CxScanConfig config, ScanResults ret) {
         //assert if expected exception is thrown  OR when vulnerabilities under threshold OR when policy violated
         ScanSummary scanSummary = new ScanSummary(config, ret.getSastResults(), ret.getOsaResults(), ret.getScaResults());
-      try {
-          if (scanSummary.hasErrors() || ret.getGeneralException() != null ||
-                  (ret.getSastResults() != null && ret.getSastResults().getException() != null) ||
-                  (ret.getOsaResults() != null && ret.getOsaResults().getException() != null) ||
-                  (ret.getScaResults() != null && ret.getScaResults().getException() != null)) {
-              log.info("First time");
-              debugTicket74463(scanSummary, ret);
-              printBuildFailure(scanSummary.toString(), ret, log);
-              if (resolvedVulnerabilityThresholdResult != null) {
-                  run.setResult(resolvedVulnerabilityThresholdResult);
-              }
+        try {
+            if (scanSummary.hasErrors() || ret.getGeneralException() != null ||
+                    (ret.getSastResults() != null && ret.getSastResults().getException() != null) ||
+                    (ret.getOsaResults() != null && ret.getOsaResults().getException() != null) ||
+                    (ret.getScaResults() != null && ret.getScaResults().getException() != null)) {
+                log.info("First time");
+                debugTicket74463(scanSummary, ret);
+                printBuildFailure(scanSummary.toString(), ret, log);
+                if (resolvedVulnerabilityThresholdResult != null) {
+                    run.setResult(resolvedVulnerabilityThresholdResult);
+                }
 
-              if (useUnstableOnError(getDescriptor())) {
-                  run.setResult(Result.UNSTABLE);
-                  log.info("Result.UNSTABLE");
-              } else {
-                  run.setResult(Result.FAILURE);
-                  log.info("Result.FAILURE");
-              }
+                if (useUnstableOnError(getDescriptor())) {
+                    run.setResult(Result.UNSTABLE);
+                    log.info("Result.UNSTABLE");
+                } else {
+                    run.setResult(Result.FAILURE);
+                    log.info("Result.FAILURE");
+                }
 
 
-          }
-      }catch (Exception e){
-          log.info("try catch");
-          debugTicket74463(scanSummary, ret);
-          printBuildFailure(scanSummary.toString(), ret, log);
-          if (resolvedVulnerabilityThresholdResult != null) {
-              run.setResult(resolvedVulnerabilityThresholdResult);
-          }
+            }
+        } catch (Exception e) {
+            log.info("try catch");
+            debugTicket74463(scanSummary, ret);
+            printBuildFailure(scanSummary.toString(), ret, log);
+            if (resolvedVulnerabilityThresholdResult != null) {
+                run.setResult(resolvedVulnerabilityThresholdResult);
+            }
 
-          if (useUnstableOnError(getDescriptor())) {
-              run.setResult(Result.UNSTABLE);
-              log.info("Result.UNSTABLE");
-          } else {
-              run.setResult(Result.FAILURE);
-              log.info("Result.FAILURE");
-          }
-      }
+            if (useUnstableOnError(getDescriptor())) {
+                run.setResult(Result.UNSTABLE);
+                log.info("Result.UNSTABLE");
+            } else {
+                run.setResult(Result.FAILURE);
+                log.info("Result.FAILURE");
+            }
+        }
     }
 
-    private void debugTicket74463(ScanSummary scanSummary,ScanResults ret) {
+    private void debugTicket74463(ScanSummary scanSummary, ScanResults ret) {
         if (scanSummary.hasErrors()) {
             log.info("scanSummary.hasErrors() is TRUE");
         }
         if (ret.getGeneralException() != null) {
             log.info("ret.getGeneralException() != null");
         }
-        if((ret.getSastResults() != null && ret.getSastResults().getException() != null)){
+        if ((ret.getSastResults() != null && ret.getSastResults().getException() != null)) {
             log.info("(ret.getSastResults() != null && ret.getSastResults().getException() != null)");
         }
-        if((ret.getOsaResults() != null && ret.getOsaResults().getException() != null)){
+        if ((ret.getOsaResults() != null && ret.getOsaResults().getException() != null)) {
             log.info("(ret.getOsaResults() != null && ret.getOsaResults().getException() != null)");
         }
-        if ( (ret.getScaResults() != null && ret.getScaResults().getException() != null)){
+        if ((ret.getScaResults() != null && ret.getScaResults().getException() != null)) {
             log.info(" (ret.getScaResults() != null && ret.getScaResults().getException() != null)");
         }
     }
